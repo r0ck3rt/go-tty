@@ -12,7 +12,7 @@ if err != nil {
 defer tty.Close()
 
 for {
-	r, err := tty.ReadRune()
+	r, _, err := tty.ReadRune()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -37,7 +37,7 @@ fmt.Fprintln(out, "\x1b[2J")
 ## Installation
 
 ```
-$ go get github.com/mattn/go-tty
+$ go get github.com/mattn/go-tty/v2
 ```
 
 ## License

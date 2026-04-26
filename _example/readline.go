@@ -5,8 +5,8 @@ package main
 import (
 	"log"
 
-	"github.com/mattn/go-tty"
-	"github.com/mattn/go-tty/ttyutil"
+	"github.com/mattn/go-tty/v2"
+	"github.com/mattn/go-tty/v2/ttyutil"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module github.com/mattn/go-tty
+module github.com/mattn/go-tty/v2
 
 go 1.18
 

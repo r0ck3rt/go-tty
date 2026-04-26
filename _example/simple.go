@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/mattn/go-tty"
+	"github.com/mattn/go-tty/v2"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 
 	fmt.Println("Hit any key")
 	for {
-		r, err := t.ReadRune()
+		r, _, err := t.ReadRune()
 		if err != nil {
 			log.Fatal(err)
 		}

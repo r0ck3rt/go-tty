@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/mattn/go-tty"
+	"github.com/mattn/go-tty/v2"
 )
 
 func main() {
