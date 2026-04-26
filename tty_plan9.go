@@ -36,9 +36,9 @@ func (tty *TTY) buffered() bool {
 	return tty.bin.Buffered() > 0
 }
 
-func (tty *TTY) readRune() (rune, error) {
-	r, _, err := tty.bin.ReadRune()
-	return r, err
+func (tty *TTY) readRune() (rune, int, error) {
+	r, size, err := tty.bin.ReadRune()
+	return r, size, err
 }
 
 func (tty *TTY) close() (err error) {

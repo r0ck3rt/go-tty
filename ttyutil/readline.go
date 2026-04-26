@@ -117,7 +117,7 @@ loop:
 		}
 		dirty = false
 
-		r, err := tty.ReadRune()
+		r, _, err := tty.ReadRune()
 		if err != nil {
 			break
 		}
@@ -152,9 +152,9 @@ loop:
 			if !tty.Buffered() {
 				return "", io.EOF
 			}
-			r, err = tty.ReadRune()
+			r, _, err = tty.ReadRune()
 			if err == nil && r == 0x5b {
-				r, err = tty.ReadRune()
+				r, _, err = tty.ReadRune()
 				if err != nil {
 					panic(err)
 				}
