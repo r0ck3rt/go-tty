@@ -32,7 +32,7 @@ func (tty *TTY) Buffered() bool {
 	return tty.buffered()
 }
 
-func (tty *TTY) ReadRune() (rune, error) {
+func (tty *TTY) ReadRune() (rune, int, error) {
 	return tty.readRune()
 }
 
@@ -67,7 +67,7 @@ func (tty *TTY) readString(displayType int) (string, error) {
 	rs := []rune{}
 loop:
 	for {
-		r, err := tty.readRune()
+		r, _, err := tty.readRune()
 		if err != nil {
 			return "", err
 		}
