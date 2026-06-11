@@ -7,7 +7,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/mattn/go-isatty"
@@ -39,6 +42,10 @@ const (
 	keyEvent              = 0x1
 	mouseEvent            = 0x2
 	windowBufferSizeEvent = 0x4
+
+	enableVirtualTerminalInput = 0x200
+
+	waitObject0 = 0
 )
 
 var kernel32 = syscall.NewLazyDLL("kernel32.dll")
@@ -61,6 +68,7 @@ var (
 	procFillConsoleOutputCharacter  = kernel32.NewProc("FillConsoleOutputCharacterW")
 	procFillConsoleOutputAttribute  = kernel32.NewProc("FillConsoleOutputAttribute")
 	procScrollConsoleScreenBuffer   = kernel32.NewProc("ScrollConsoleScreenBufferW")
+	procWaitForSingleObject         = kernel32.NewProc("WaitForSingleObject")
 )
 
 type wchar uint16
@@ -361,10 +369,95 @@ func (tty *TTY) size() (int, int, error) {
 func (tty *TTY) sizePixel() (int, int, int, int, error) {
 	x, y, err := tty.size()
 	if err != nil {
-		x = -1
-		y = -1
+		return -1, -1, -1, -1, err
 	}
-	return x, y, -1, -1, errors.New("no implemented method for querying size in pixels on Windows")
+	wpx, hpx, err := tty.queryTextAreaPixel()
+	if err != nil {
+		return x, y, -1, -1, err
+	}
+	return x, y, wpx, hpx, nil
+}
+
+// queryTextAreaPixel asks the hosting terminal for the pixel size of the
+// text area with CSI 14 t and parses the "ESC [ 4 ; height ; width t"
+// reply. The Windows console API cannot report pixel sizes under ConPTY,
+// where the rendering terminal owns the font; only the terminal itself
+// knows them. Raw key events are read with a short deadline so terminals
+// that do not answer the query cannot hang the caller.
+func (tty *TTY) queryTextAreaPixel() (int, int, error) {
+	in := tty.in.Fd()
+
+	var mode uint32
+	if r1, _, err := procGetConsoleMode.Call(in, uintptr(unsafe.Pointer(&mode))); r1 == 0 {
+		return -1, -1, err
+	}
+	raw := (mode &^ (enableLineInput | enableEchoInput | enableProcessedInput)) | enableVirtualTerminalInput
+	if r1, _, err := procSetConsoleMode.Call(in, uintptr(raw)); r1 == 0 {
+		return -1, -1, err
+	}
+	defer procSetConsoleMode.Call(in, uintptr(mode))
+
+	if _, err := tty.out.WriteString("\x1b[14t"); err != nil {
+		return -1, -1, err
+	}
+
+	deadline := time.Now().Add(200 * time.Millisecond)
+	var buf []byte
+	for len(buf) < 64 {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		r1, _, _ := procWaitForSingleObject.Call(in, uintptr(remaining.Milliseconds()))
+		if r1 != waitObject0 {
+			break
+		}
+		var ir inputRecord
+		var n uint32
+		r1, _, _ = procReadConsoleInput.Call(in, uintptr(unsafe.Pointer(&ir)), 1, uintptr(unsafe.Pointer(&n)))
+		if r1 == 0 || n != 1 {
+			break
+		}
+		if ir.eventType != keyEvent {
+			continue
+		}
+		kr := (*keyEventRecord)(unsafe.Pointer(&ir.event))
+		if kr.keyDown == 0 || kr.unicodeChar == 0 || kr.unicodeChar > 0x7f {
+			continue
+		}
+		buf = append(buf, byte(kr.unicodeChar))
+		if buf[len(buf)-1] == 't' {
+			break
+		}
+	}
+
+	// Expected: ESC [ 4 ; height ; width t
+	s := string(buf)
+	i := strings.Index(s, "\x1b[4;")
+	if i < 0 {
+		return -1, -1, errors.New("terminal did not reply to CSI 14 t")
+	}
+	s = s[i+4:]
+	end := strings.IndexByte(s, 't')
+	if end < 0 {
+		return -1, -1, errors.New("invalid reply to CSI 14 t")
+	}
+	parts := strings.SplitN(s[:end], ";", 2)
+	if len(parts) != 2 {
+		return -1, -1, errors.New("invalid reply to CSI 14 t")
+	}
+	hpx, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return -1, -1, err
+	}
+	wpx, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return -1, -1, err
+	}
+	if hpx <= 0 || wpx <= 0 {
+		return -1, -1, errors.New("invalid reply to CSI 14 t")
+	}
+	return wpx, hpx, nil
 }
 
 func (tty *TTY) input() *os.File {
